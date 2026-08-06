@@ -14,7 +14,7 @@ import requests
 HOST          = os.environ["CR_HOST"]                 # required
 TOKEN         = os.environ["CR_TOKEN"]                # required (Jenkins credential)
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK_URL")   # optional; skips Slack if unset
-NEAR_PCT      = float(os.environ.get("NEAR_COMPLETE_PCT", "90"))
+NEAR_PCT      = 90
 REQ_TIMEOUT   = 20
 
 CLIENT_IDS = [
@@ -111,14 +111,24 @@ def print_table(rows):
         print("  ".join(str(r.get(c) if r.get(c) is not None else "").ljust(w[c]) for c in COLS))
 
 
+def r4(v):
+    """Round numeric to 4 dp; pass through non-numeric, 'n/a' for missing."""
+    f = to_float(v)
+    if f is not None:
+        return f"{f:.4f}"
+    return "n/a" if v in (None, "", "null") else str(v)
+
+
 def slack_post(active, near):
     def line(r):
-        pe = to_float(r["pct_executed"])
-        nsp = to_float(r["realized_net_spread_pct"])
-        return (f"{r['exchange']}/{r['account']} {r['currency_pair']} {r['side']} "
-                f"qty={r['quantity']} px={r['avg_price']} "
-                f"{pe:.1f}% netSpread={nsp:.4f}%" if pe is not None and nsp is not None
-                else f"{r['exchange']}/{r['account']} {r['currency_pair']} {r['side']} qty={r['quantity']}")
+        return (
+            f"*{r['exchange']}/{r['account']}* {r['currency_pair']} {r['side']}\n"
+            f"    qty={r4(r['quantity'])}  px={r4(r['avg_price'])}  "
+            f"filled={r4(r['pct_executed'])}%  netSpread={r4(r['realized_net_spread_pct'])}%\n"
+            f"    pause_offset={r4(r['pause_offset'])}  spread_offset={r4(r['spread_offset'])}  "
+            f"risk_qty={r4(r['risk_quantity'])}\n"
+            f"    id=`{r['client_order_id']}`  created={r['created_at']}"
+        )
     parts = [f":bar_chart: CoinRoutes 902 active orders: *{len(active)}*"]
     if near:
         parts.append(f":rotating_light: *Near complete (>= {NEAR_PCT:.0f}%): {len(near)}*")
