@@ -8,13 +8,14 @@ Deps: requests only.
 import os
 import sys
 import json
+from datetime import datetime, timezone
 import requests
 
 # ------------------------------ CONFIG -----------------------------------
 HOST          = os.environ["CR_HOST"]                 # required
 TOKEN         = os.environ["CR_TOKEN"]                # required (Jenkins credential)
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK_URL")   # optional; skips Slack if unset
-NEAR_PCT      = 90
+NEAR_PCT      = float(os.environ.get("NEAR_COMPLETE_PCT", "90"))
 REQ_TIMEOUT   = 20
 
 CLIENT_IDS = [
@@ -29,7 +30,7 @@ CLIENT_IDS = [
 TERMINAL = {"closed", "cancelled", "canceled", "finished",
             "error", "rejected", "expired", "filled"}
 COLS = ["account", "exchange", "currency_pair", "side", "client_order_id",
-        "created_at", "quantity", "avg_price", "pct_executed",
+        "created_at", "age", "quantity", "avg_price", "pct_executed",
         "realized_net_spread_pct", "pause_offset", "spread_offset", "risk_quantity"]
 # -------------------------------------------------------------------------
 
@@ -84,6 +85,25 @@ def to_float(v):
         return None
 
 
+def age_str(created_at):
+    """Elapsed wall-clock since order creation, e.g. '3d4h', '2h15m', '8m'."""
+    if not created_at:
+        return "n/a"
+    try:
+        dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return "n/a"
+    secs = int((datetime.now(timezone.utc) - dt).total_seconds())
+    if secs < 0:
+        secs = 0
+    d, rem = divmod(secs, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    if d:  return f"{d}d{h}h"
+    if h:  return f"{h}h{m}m"
+    return f"{m}m"
+
+
 def is_active(o):
     return not o.get("finished_at") and str(o.get("order_status", "")).lower() not in TERMINAL
 
@@ -94,6 +114,7 @@ def extract(o, name, exch):
         "account": name, "exchange": exch,
         "currency_pair": o.get("currency_pair"), "side": o.get("side"),
         "client_order_id": o.get("client_order_id"), "created_at": o.get("created_at"),
+        "age": age_str(o.get("created_at")),
         "quantity": o.get("quantity"), "avg_price": o.get("avg_price"),
         "pct_executed": o.get("pct_executed"),
         "realized_net_spread_pct": rs.get("avg_exec_price_net_pct"),
@@ -127,7 +148,7 @@ def slack_post(active, near):
             f"filled={r4(r['pct_executed'])}%  netSpread={r4(r['realized_net_spread_pct'])}%\n"
             f"    pause_offset={r4(r['pause_offset'])}  spread_offset={r4(r['spread_offset'])}  "
             f"risk_qty={r4(r['risk_quantity'])}\n"
-            f"    id=`{r['client_order_id']}`  created={r['created_at']}"
+            f"    running={r['age']}  id=`{r['client_order_id']}`  created={r['created_at']}"
         )
     parts = [f":bar_chart: CoinRoutes 902 active orders: *{len(active)}*"]
     if near:
