@@ -184,7 +184,9 @@ near = [r for r in active if (to_float(r["pct_executed"]) or 0) >= NEAR_PCT]
 print(f"ACTIVE: {len(active)} | NEAR COMPLETE (>= {NEAR_PCT:.0f}%): {len(near)}\n")
 print_table(active)
 
-if SLACK_WEBHOOK:
+if not active:
+    print("slack: no active orders, skipping")
+elif SLACK_WEBHOOK:
     try:
         slack_post(active, near); print("slack: posted")
     except requests.RequestException as e:
