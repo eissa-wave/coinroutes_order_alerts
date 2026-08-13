@@ -31,7 +31,8 @@ TERMINAL = {"closed", "cancelled", "canceled", "finished",
             "error", "rejected", "expired", "filled"}
 COLS = ["account", "exchange", "currency_pair", "side", "client_order_id",
         "created_at", "age", "quantity", "avg_price", "pct_executed",
-        "realized_net_spread_pct", "pause_offset", "spread_offset", "risk_quantity"]
+        "realized_net_spread_pct", "pause_offset", "spread_offset", "risk_quantity",
+        "balancing_post_only", "balancing_aggression"]
 # -------------------------------------------------------------------------
 
 S = requests.Session()
@@ -121,6 +122,8 @@ def extract(o, name, exch):
         "pause_offset": coalesce(ap, ["pause_offset_pct", "pause_offset_value", "pause_offset_ratio"]),
         "spread_offset": coalesce(ap, ["spread_offset_pct", "spread_offset_value"]),
         "risk_quantity": coalesce(ap, ["risk_quantity", "risk_quantity_notional_usd"]),
+        "balancing_post_only": coalesce(ap, ["balancing_post_only"]),
+        "balancing_aggression": coalesce(ap, ["balancing_aggression"]),
     }
 
 
@@ -140,6 +143,11 @@ def r4(v):
     return "n/a" if v in (None, "", "null") else str(v)
 
 
+def fmt(v):
+    """Generic display: 'n/a' for missing, str otherwise (keeps bools readable)."""
+    return "n/a" if v in (None, "", "null") else str(v)
+
+
 def slack_post(active, near):
     def line(r):
         return (
@@ -148,6 +156,8 @@ def slack_post(active, near):
             f"filled={r4(r['pct_executed'])}%  netSpread={r4(r['realized_net_spread_pct'])}%\n"
             f"    pause_offset={r4(r['pause_offset'])}  spread_offset={r4(r['spread_offset'])}  "
             f"risk_qty={r4(r['risk_quantity'])}\n"
+            f"    balancing_post_only={fmt(r['balancing_post_only'])}  "
+            f"balancing_aggression={fmt(r['balancing_aggression'])}\n"
             f"    running={r['age']}  id=`{r['client_order_id']}`  created={r['created_at']}"
         )
     parts = [f":bar_chart: CoinRoutes 902 active orders: *{len(active)}*"]
